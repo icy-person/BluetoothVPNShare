@@ -356,7 +356,7 @@ jobs:
         with:
           name: BluetoothVPNShare-build-info
           path: |
-            android/app/src/main/jniLibs/
-            android/app/build/outputs/apk/debug/
+            app/src/main/jniLibs/
+            app/build/outputs/apk/debug/
           if-no-files-found: warn
           retention-days: 7
