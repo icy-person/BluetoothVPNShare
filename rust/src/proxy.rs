@@ -56,7 +56,7 @@ async fn http(mut s:TcpStream,first:u8,user:String,pass:String)->io::Result<()>{
     let text=String::from_utf8_lossy(&data);let mut lines=text.split("\r\n");let req=lines.next().unwrap_or("");let mut parts=req.split_whitespace();let method=parts.next().unwrap_or("");let uri=parts.next().unwrap_or("");
     if !user.is_empty(){let expected=format!("{}:{}",user,pass);let mut ok=false;for l in lines.clone(){if l.to_ascii_lowercase().starts_with("proxy-authorization:"){let v=l.split_whitespace().nth(2).unwrap_or("");let want=base64_simple(expected.as_bytes());ok=v==want;}}if !ok{s.write_all(b"HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=proxy\r\n\r\n").await?;return Ok(());}}
     let target=if method.eq_ignore_ascii_case("CONNECT"){uri.to_string()}else{let u=uri.parse::<url::Url>().map_err(|_|io::Error::new(io::ErrorKind::InvalidData,"bad url"))?;format!("{}:{}",u.host_str().unwrap_or(""),u.port_or_known_default().unwrap_or(80))};
-    let mut r=match TcpStream::connect(target).await{Ok(x)=>x,Err(_)=>{s.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n").await?;return Ok(());}};
+    let r=match TcpStream::connect(target).await{Ok(x)=>x,Err(_)=>{s.write_all(b"HTTP/1.1 502 Bad Gateway\r\n\r\n").await?;return Ok(());}};
     if method.eq_ignore_ascii_case("CONNECT"){s.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n").await?;}else{s.write_all(&data).await?;}
     let(mut sr,mut sw)=s.into_split();let(mut rr,mut rw)=r.into_split();tokio::try_join!(tokio::io::copy(&mut sr,&mut rw),tokio::io::copy(&mut rr,&mut sw))?;Ok(())
 }
