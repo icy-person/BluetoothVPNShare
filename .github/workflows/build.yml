@@ -1,0 +1,397 @@
+name: Build Bluetooth VPN Share
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NDK_VERSION: "29.0.13113456"
+  ANDROID_PLATFORM: "24"
+  ANDROID_COMPILE_SDK: "36"
+  ANDROID_BUILD_TOOLS: "35.0.0"
+  CARGO_NDK_VERSION: "4.1.2"
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-24.04
+
+    steps:
+
+      # --------------------------------------------------
+      # Checkout
+      # --------------------------------------------------
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+
+      # --------------------------------------------------
+      # Java
+      # --------------------------------------------------
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+
+      # --------------------------------------------------
+      # Android SDK
+      # --------------------------------------------------
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+
+      # --------------------------------------------------
+      # Android SDK + NDK
+      # --------------------------------------------------
+
+      - name: Install Android SDK and NDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          yes | sdkmanager --licenses >/dev/null || true
+
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-${ANDROID_COMPILE_SDK}" \
+            "build-tools;${ANDROID_BUILD_TOOLS}" \
+            "ndk;${NDK_VERSION}"
+
+          echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK=${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}" >> "$GITHUB_ENV"
+
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT}" >> "$GITHUB_ENV"
+
+          echo "Android SDK:"
+          echo "${ANDROID_SDK_ROOT}"
+
+          echo "Android NDK:"
+          echo "${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
+
+          ls -la "${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
+
+
+      # --------------------------------------------------
+      # Rust
+      # --------------------------------------------------
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: |
+            aarch64-linux-android
+            x86_64-linux-android
+
+
+      # --------------------------------------------------
+      # Rust cache
+      # --------------------------------------------------
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+
+      # --------------------------------------------------
+      # cargo-ndk
+      # --------------------------------------------------
+
+      - name: Install cargo-ndk
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cargo install \
+            cargo-ndk \
+            --version "${CARGO_NDK_VERSION}" \
+            --locked
+
+          cargo ndk --version
+
+
+      # --------------------------------------------------
+      # Rust dependency check
+      # --------------------------------------------------
+
+      - name: Check Rust project
+        working-directory: rust
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cargo check \
+            --target aarch64-linux-android
+
+
+      # --------------------------------------------------
+      # Rust format
+      # --------------------------------------------------
+
+      - name: Check Rust formatting
+        working-directory: rust
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cargo fmt --all -- --check
+
+
+      # --------------------------------------------------
+      # Prepare JNI directory
+      # --------------------------------------------------
+
+      - name: Prepare JNI directory
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          rm -rf android/app/src/main/jniLibs
+
+          mkdir -p \
+            android/app/src/main/jniLibs/arm64-v8a \
+            android/app/src/main/jniLibs/x86_64
+
+
+      # --------------------------------------------------
+      # Build ARM64 Rust library
+      # --------------------------------------------------
+
+      - name: Build Rust JNI - ARM64
+        working-directory: rust
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cargo ndk \
+            -t arm64-v8a \
+            -P "${ANDROID_PLATFORM}" \
+            -o ../android/app/src/main/jniLibs \
+            build --release
+
+
+      # --------------------------------------------------
+      # Build x86_64 Rust library
+      # --------------------------------------------------
+
+      - name: Build Rust JNI - x86_64
+        working-directory: rust
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cargo ndk \
+            -t x86_64 \
+            -P "${ANDROID_PLATFORM}" \
+            -o ../android/app/src/main/jniLibs \
+            build --release
+
+
+      # --------------------------------------------------
+      # Verify native libraries
+      # --------------------------------------------------
+
+      - name: Verify native libraries
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          echo "JNI libraries:"
+          find android/app/src/main/jniLibs \
+            -type f \
+            -print
+
+          echo
+          echo "ARM64:"
+          file \
+            android/app/src/main/jniLibs/arm64-v8a/libbluetooth_vpn_share.so
+
+          echo
+          echo "x86_64:"
+          file \
+            android/app/src/main/jniLibs/x86_64/libbluetooth_vpn_share.so
+
+          echo
+          echo "Sizes:"
+          du -h \
+            android/app/src/main/jniLibs/arm64-v8a/libbluetooth_vpn_share.so \
+            android/app/src/main/jniLibs/x86_64/libbluetooth_vpn_share.so
+
+
+      # --------------------------------------------------
+      # Verify JNI symbols
+      # --------------------------------------------------
+
+      - name: Verify JNI symbols
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          LLVM_NM="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+
+          echo "Checking ARM64 JNI symbols..."
+
+          "${LLVM_NM}" \
+            -D \
+            android/app/src/main/jniLibs/arm64-v8a/libbluetooth_vpn_share.so \
+            | grep \
+              'Java_com_example_bluetoothvpnshare_ProxyService_nativeStart'
+
+          "${LLVM_NM}" \
+            -D \
+            android/app/src/main/jniLibs/arm64-v8a/libbluetooth_vpn_share.so \
+            | grep \
+              'Java_com_example_bluetoothvpnshare_ProxyService_nativeStop'
+
+          "${LLVM_NM}" \
+            -D \
+            android/app/src/main/jniLibs/arm64-v8a/libbluetooth_vpn_share.so \
+            | grep \
+              'Java_com_example_bluetoothvpnshare_ProxyService_nativeStats'
+
+
+      # --------------------------------------------------
+      # Gradle
+      # --------------------------------------------------
+
+      - name: Make Gradle executable
+        shell: bash
+        run: |
+          if [ -f android/gradlew ]; then
+            chmod +x android/gradlew
+          fi
+
+
+      # --------------------------------------------------
+      # Build APK
+      # --------------------------------------------------
+
+      - name: Build Debug APK
+        working-directory: android
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          if [ -x ./gradlew ]; then
+            ./gradlew \
+              --no-daemon \
+              --stacktrace \
+              --warning-mode all \
+              assembleDebug
+          else
+            gradle \
+              --no-daemon \
+              --stacktrace \
+              --warning-mode all \
+              assembleDebug
+          fi
+
+
+      # --------------------------------------------------
+      # Find APK
+      # --------------------------------------------------
+
+      - name: Find APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          echo "Generated APK files:"
+
+          find android/app/build/outputs/apk \
+            -type f \
+            -name "*.apk" \
+            -print
+
+
+      # --------------------------------------------------
+      # Rename APK
+      # --------------------------------------------------
+
+      - name: Rename APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+
+          test -f "${APK}"
+
+          cp \
+            "${APK}" \
+            BluetoothVPNShare-debug.apk
+
+          ls -lh BluetoothVPNShare-debug.apk
+
+
+      # --------------------------------------------------
+      # Upload APK
+      # --------------------------------------------------
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BluetoothVPNShare-debug
+          path: BluetoothVPNShare-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+
+      # --------------------------------------------------
+      # Upload ARM64 library
+      # --------------------------------------------------
+
+      - name: Upload ARM64 native library
+        uses: actions/upload-artifact@v4
+        with:
+          name: BluetoothVPNShare-arm64-v8a-so
+          path: android/app/src/main/jniLibs/arm64-v8a/libbluetooth_vpn_share.so
+          if-no-files-found: error
+          retention-days: 30
+
+
+      # --------------------------------------------------
+      # Upload x86_64 library
+      # --------------------------------------------------
+
+      - name: Upload x86_64 native library
+        uses: actions/upload-artifact@v4
+        with:
+          name: BluetoothVPNShare-x86_64-so
+          path: android/app/src/main/jniLibs/x86_64/libbluetooth_vpn_share.so
+          if-no-files-found: error
+          retention-days: 30
+
+
+      # --------------------------------------------------
+      # Upload complete build directory
+      # --------------------------------------------------
+
+      - name: Upload build information
+        uses: actions/upload-artifact@v4
+        with:
+          name: BluetoothVPNShare-build-info
+          path: |
+            android/app/src/main/jniLibs/
+            android/app/build/outputs/apk/debug/
+          if-no-files-found: warn
+          retention-days: 7
