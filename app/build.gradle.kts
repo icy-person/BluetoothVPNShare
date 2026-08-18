@@ -15,20 +15,45 @@ android {
         versionName = "1.0.0"
     }
 
-    buildTypes { release { isMinifyEnabled = false } }
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlin {
+        jvmToolchain(17)
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+        }
+    }
+
     sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs")
-    packaging.jniLibs.useLegacyPackaging = true
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
 }
 
 tasks.register<Exec>("buildRust") {
     workingDir(project.projectDir.resolve("../rust"))
+
     commandLine(
-        "cargo", "ndk",
+        "cargo",
+        "ndk",
         "-t", "arm64-v8a",
         "-t", "x86_64",
-        "-o", project.projectDir.resolve("src/main/jniLibs").absolutePath,
-        "build", "--release"
+        "-o",
+        project.projectDir.resolve("src/main/jniLibs").absolutePath,
+        "build",
+        "--release"
     )
 }
 
-tasks.named("preBuild").configure { dependsOn("buildRust") }
+tasks.named("preBuild").configure {
+    dependsOn("buildRust")
+}
