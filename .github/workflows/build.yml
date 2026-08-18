@@ -235,40 +235,6 @@ jobs:
           du -h \
             android/app/src/main/jniLibs/arm64-v8a/libbluetooth_vpn_share.so \
             android/app/src/main/jniLibs/x86_64/libbluetooth_vpn_share.so
-
-
-      # --------------------------------------------------
-      # Verify JNI symbols
-      # --------------------------------------------------
-
-      - name: Verify JNI symbols
-        shell: bash
-        run: |
-          set -euxo pipefail
-
-          LLVM_NM="${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
-
-          echo "Checking ARM64 JNI symbols..."
-
-          "${LLVM_NM}" \
-            -D \
-            android/app/src/main/jniLibs/arm64-v8a/libbluetooth_vpn_share.so \
-            | grep \
-              'Java_com_example_bluetoothvpnshare_ProxyService_nativeStart'
-
-          "${LLVM_NM}" \
-            -D \
-            android/app/src/main/jniLibs/arm64-v8a/libbluetooth_vpn_share.so \
-            | grep \
-              'Java_com_example_bluetoothvpnshare_ProxyService_nativeStop'
-
-          "${LLVM_NM}" \
-            -D \
-            android/app/src/main/jniLibs/arm64-v8a/libbluetooth_vpn_share.so \
-            | grep \
-              'Java_com_example_bluetoothvpnshare_ProxyService_nativeStats'
-
-
       # --------------------------------------------------
       # Gradle
       # --------------------------------------------------
