@@ -1,8 +1,8 @@
 use jni::objects::{JClass, JString};
 use jni::sys::jboolean;
 use jni::JNIEnv;
-use std::sync::{Mutex, OnceLock};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 
 mod proxy;
@@ -26,13 +26,21 @@ pub extern "system" fn Java_com_example_bluetoothvpnshare_ProxyService_nativeSta
         return 0;
     }
 
-    let username = env.get_string(&user).map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-    let password = env.get_string(&pass).map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let username = env
+        .get_string(&user)
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let password = env
+        .get_string(&pass)
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let (tx, rx) = tokio::sync::watch::channel(false);
     *stop_cell().lock().unwrap() = Some(tx);
 
     thread::spawn(move || {
-        let rt = tokio::runtime::Builder::new_multi_thread().enable_all().build();
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build();
         if let Ok(rt) = rt {
             let _ = rt.block_on(proxy::run(port as u16, username, password, rx));
         }
