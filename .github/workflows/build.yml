@@ -165,11 +165,11 @@ jobs:
         run: |
           set -euxo pipefail
 
-          rm -rf android/app/src/main/jniLibs
+          rm -rf app/src/main/jniLibs
 
           mkdir -p \
-            android/app/src/main/jniLibs/arm64-v8a \
-            android/app/src/main/jniLibs/x86_64
+            app/src/main/jniLibs/arm64-v8a \
+            app/src/main/jniLibs/x86_64
 
 
       # --------------------------------------------------
@@ -185,7 +185,7 @@ jobs:
           cargo ndk \
             -t arm64-v8a \
             -P "${ANDROID_PLATFORM}" \
-            -o ../android/app/src/main/jniLibs \
+            -o ../app/src/main/jniLibs \
             build --release
 
 
@@ -202,7 +202,7 @@ jobs:
           cargo ndk \
             -t x86_64 \
             -P "${ANDROID_PLATFORM}" \
-            -o ../android/app/src/main/jniLibs \
+            -o ../app/src/main/jniLibs \
             build --release
 
 
@@ -216,25 +216,25 @@ jobs:
           set -euxo pipefail
 
           echo "JNI libraries:"
-          find android/app/src/main/jniLibs \
+          find app/src/main/jniLibs \
             -type f \
             -print
 
           echo
           echo "ARM64:"
           file \
-            android/app/src/main/jniLibs/arm64-v8a/libbluetooth_vpn_share.so
+            app/src/main/jniLibs/arm64-v8a/libbluetooth_vpn_share.so
 
           echo
           echo "x86_64:"
           file \
-            android/app/src/main/jniLibs/x86_64/libbluetooth_vpn_share.so
+            app/src/main/jniLibs/x86_64/libbluetooth_vpn_share.so
 
           echo
           echo "Sizes:"
           du -h \
-            android/app/src/main/jniLibs/arm64-v8a/libbluetooth_vpn_share.so \
-            android/app/src/main/jniLibs/x86_64/libbluetooth_vpn_share.so
+            app/src/main/jniLibs/arm64-v8a/libbluetooth_vpn_share.so \
+            app/src/main/jniLibs/x86_64/libbluetooth_vpn_share.so
       # --------------------------------------------------
       # Gradle
       # --------------------------------------------------
@@ -242,8 +242,8 @@ jobs:
       - name: Make Gradle executable
         shell: bash
         run: |
-          if [ -f android/gradlew ]; then
-            chmod +x android/gradlew
+          if [ -f gradlew ]; then
+            chmod +x gradlew
           fi
 
 
@@ -252,7 +252,6 @@ jobs:
       # --------------------------------------------------
 
       - name: Build Debug APK
-        working-directory: android
         shell: bash
         run: |
           set -euxo pipefail
@@ -283,7 +282,7 @@ jobs:
 
           echo "Generated APK files:"
 
-          find android/app/build/outputs/apk \
+          find app/build/outputs/apk \
             -type f \
             -name "*.apk" \
             -print
@@ -298,7 +297,7 @@ jobs:
         run: |
           set -euxo pipefail
 
-          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          APK="app/build/outputs/apk/debug/app-debug.apk"
 
           test -f "${APK}"
 
@@ -330,7 +329,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: BluetoothVPNShare-arm64-v8a-so
-          path: android/app/src/main/jniLibs/arm64-v8a/libbluetooth_vpn_share.so
+          path: app/src/main/jniLibs/arm64-v8a/libbluetooth_vpn_share.so
           if-no-files-found: error
           retention-days: 30
 
@@ -343,7 +342,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: BluetoothVPNShare-x86_64-so
-          path: android/app/src/main/jniLibs/x86_64/libbluetooth_vpn_share.so
+          path: app/src/main/jniLibs/x86_64/libbluetooth_vpn_share.so
           if-no-files-found: error
           retention-days: 30
 
